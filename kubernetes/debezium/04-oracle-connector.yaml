@@ -1,0 +1,46 @@
+# kubernetes/debezium/04-oracle-connector.yaml
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaConnector
+metadata:
+  name: oracle-cdc-connector
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: debezium-connect-cluster
+spec:
+  class: io.debezium.connector.oracle.OracleConnector
+  tasksMax: 3
+  config:
+    # Connection
+    database.hostname: ${RDS_ENDPOINT}
+    database.port: 1521
+    database.user: debezium
+    database.password: ${DEBEZIUM_PASSWORD}
+    database.dbname: ORCLCDB
+    database.pdb.name: ORCLPDB1
+    
+    # Connector config
+    database.server.name: oracle-server
+    database.connection.adapter: logminer
+    log.mining.strategy: online_catalog
+    log.mining.continuous.mine: true
+    
+    # Table selection
+    schema.include.list: DEMO_USER
+    table.include.list: DEMO_USER.CUSTOMERS,DEMO_USER.PRODUCTS,DEMO_USER.ORDERS,DEMO_USER.ORDER_ITEMS
+    
+    # Data handling
+    decimal.handling.mode: string
+    time.precision.mode: adaptive
+    include.schema.changes: false
+    tombstones.on.delete: false
+    
+    # Performance
+    max.batch.size: 2048
+    max.queue.size: 8192
+    poll.interval.ms: 1000
+    log.mining.batch.size.default: 20000
+    log.mining.view.fetch.size: 10000
+    
+    # Snapshot
+    snapshot.mode: initial
+    snapshot.locking.mode: none

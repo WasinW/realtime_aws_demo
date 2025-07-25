@@ -1,0 +1,4 @@
+# requirements.txt
+boto3>=1.26.0
+kafka-python>=2.0.2
+faker>=18.4.0
