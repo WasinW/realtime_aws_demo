@@ -111,6 +111,9 @@ resource "random_password" "master" {
 # Store password in Secrets Manager
 resource "aws_secretsmanager_secret" "rds_master" {
   name = "${var.name_prefix}-rds-oracle-master-password"
+  # name = "${var.name_prefix}-rds-oracle-master-pwd-${formatdate("YYYYMMDD", timestamp())}"
+  # name_prefix = "${var.name_prefix}-rds-oracle-master-"
+
 
   tags = var.tags
 }

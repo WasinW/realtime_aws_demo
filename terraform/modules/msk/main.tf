@@ -133,10 +133,17 @@ resource "aws_msk_cluster" "main" {
 
     storage_info {
       ebs_storage_info {
-        volume_size            = var.ebs_volume_size
-        provisioned_throughput {
-          enabled           = var.enable_provisioned_throughput
-          volume_throughput = var.provisioned_throughput
+        volume_size = var.ebs_volume_size
+        # provisioned_throughput {
+        #   enabled           = var.enable_provisioned_throughput
+        #   volume_throughput = var.provisioned_throughput
+        # }
+        dynamic "provisioned_throughput" {
+          for_each = var.enable_provisioned_throughput ? [1] : []
+          content {
+            enabled           = true
+            volume_throughput = var.provisioned_throughput
+          }
         }
       }
     }
@@ -181,30 +188,31 @@ resource "aws_msk_cluster" "main" {
 }
 
 # Create initial topics
-resource "null_resource" "create_topics" {
-  depends_on = [aws_msk_cluster.main]
+# resource "null_resource" "create_topics" {
+#   depends_on = [aws_msk_cluster.main]
 
-  provisioner "local-exec" {
-    command = <<-EOF
-      # Wait for cluster to be ready
-      aws kafka describe-cluster --cluster-arn ${aws_msk_cluster.main.arn} --query 'ClusterInfo.State' --output text
+#   provisioner "local-exec" {
+#     interpreter = ["PowerShell", "-Command"]
+#     command = <<-EOF
+#       # Wait for cluster to be ready
+#       aws kafka describe-cluster --cluster-arn ${aws_msk_cluster.main.arn} --query 'ClusterInfo.State' --output text
       
-      # Get bootstrap servers
-      BOOTSTRAP_SERVERS=$(aws kafka get-bootstrap-brokers --cluster-arn ${aws_msk_cluster.main.arn} --query 'BootstrapBrokerStringTls' --output text)
+#       # Get bootstrap servers
+#       BOOTSTRAP_SERVERS=$(aws kafka get-bootstrap-brokers --cluster-arn ${aws_msk_cluster.main.arn} --query 'BootstrapBrokerStringTls' --output text)
       
-      # Create topics using kafka-topics.sh
-      for topic in ${join(" ", var.initial_topics)}; do
-        echo "Creating topic: $topic"
-        kafka-topics.sh --create \
-          --bootstrap-server $BOOTSTRAP_SERVERS \
-          --topic $topic \
-          --partitions ${var.default_partitions} \
-          --replication-factor ${var.default_replication_factor} \
-          --command-config /tmp/kafka-client.properties || true
-      done
-    EOF
-  }
-}
+#       # Create topics using kafka-topics.sh
+#       for topic in ${join(" ", var.initial_topics)}; do
+#         echo "Creating topic: $topic"
+#         kafka-topics.sh --create \
+#           --bootstrap-server $BOOTSTRAP_SERVERS \
+#           --topic $topic \
+#           --partitions ${var.default_partitions} \
+#           --replication-factor ${var.default_replication_factor} \
+#           --command-config /tmp/kafka-client.properties || true
+#       done
+#     EOF
+#   }
+# }
 
 # Data source for current AWS account
 data "aws_caller_identity" "current" {}

@@ -1,3 +1,4 @@
+# terraform/environments/demo/outputs.tf
 output "vpc_id" {
   description = "VPC ID"
   value       = module.networking.vpc_id
@@ -8,11 +9,10 @@ output "eks_cluster_endpoint" {
   value       = module.eks.cluster_endpoint
 }
 
-# COMMENT OUT MSK output
-# output "msk_bootstrap_brokers_iam" {
-#   description = "MSK IAM bootstrap brokers"
-#   value       = module.msk.bootstrap_brokers_iam
-# }
+output "msk_bootstrap_brokers_iam" {
+  description = "MSK IAM bootstrap brokers"
+  value       = module.msk.bootstrap_brokers_iam
+}
 
 output "rds_endpoint" {
   description = "RDS Oracle endpoint"
@@ -40,3 +40,4 @@ output "kubectl_config" {
     aws eks update-kubeconfig --region ${var.region} --name ${module.eks.cluster_id}
   EOT
 }
+

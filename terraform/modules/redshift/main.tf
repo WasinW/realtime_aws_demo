@@ -74,6 +74,8 @@ resource "random_password" "redshift_master" {
 # Store password in Secrets Manager
 resource "aws_secretsmanager_secret" "redshift_master" {
   name = "${var.name_prefix}-redshift-master-password"
+  # name = "${var.name_prefix}-redshift-master-pwd-${formatdate("YYYYMMDD", timestamp())}"
+  # name_prefix = "${var.name_prefix}-redshift-master-"
 
   tags = var.tags
 }
@@ -172,6 +174,9 @@ resource "aws_redshift_logging" "main" {
   log_destination_type = "s3"
   bucket_name         = aws_s3_bucket.redshift_logs.id
   s3_key_prefix       = "redshift-logs"
+
+  depends_on = [aws_s3_bucket_policy.redshift_logs]
+
 }
 
 # S3 Bucket for Redshift Logs
@@ -179,6 +184,32 @@ resource "aws_s3_bucket" "redshift_logs" {
   bucket = "${var.name_prefix}-rs-logs-${data.aws_caller_identity.current.account_id}"
 
   tags = var.tags
+}
+
+# เพิ่มหลัง resource "aws_s3_bucket" "redshift_logs"
+resource "aws_s3_bucket_policy" "redshift_logs" {
+  bucket = aws_s3_bucket.redshift_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowRedshiftLogs"
+        Effect = "Allow"
+        Principal = {
+          Service = "redshift.amazonaws.com"
+        }
+        Action = [
+          "s3:PutObject",
+          "s3:GetBucketAcl"
+        ]
+        Resource = [
+          aws_s3_bucket.redshift_logs.arn,
+          "${aws_s3_bucket.redshift_logs.arn}/*"
+        ]
+      }
+    ]
+  })
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "redshift_logs" {
@@ -207,168 +238,168 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "redshift_logs" {
 }
 
 # Create initial schema and tables
-resource "null_resource" "setup_redshift" {
-  depends_on = [aws_redshift_cluster.main]
+# resource "null_resource" "setup_redshift" {
+#   depends_on = [aws_redshift_cluster.main]
 
-  provisioner "local-exec" {
-    command = <<-EOF
-      # Wait for Redshift to be available
-      aws redshift wait cluster-available --cluster-identifier ${aws_redshift_cluster.main.cluster_identifier}
+#   provisioner "local-exec" {
+#     command = <<-EOF
+#       # Wait for Redshift to be available
+#       aws redshift wait cluster-available --cluster-identifier ${aws_redshift_cluster.main.cluster_identifier}
       
-      # Create schema and tables SQL
-      cat > /tmp/setup_redshift.sql <<SQL
-      -- Create schemas
-      CREATE SCHEMA IF NOT EXISTS staging;
-      CREATE SCHEMA IF NOT EXISTS marts;
+#       # Create schema and tables SQL
+#       cat > /tmp/setup_redshift.sql <<SQL
+#       -- Create schemas
+#       CREATE SCHEMA IF NOT EXISTS staging;
+#       CREATE SCHEMA IF NOT EXISTS marts;
       
-      -- Create external schema for MSK streaming ingestion
-      CREATE EXTERNAL SCHEMA msk_streaming
-      FROM MSK
-      IAM_ROLE '${var.msk_access_role_arn}'
-      AUTHENTICATION iam
-      CLUSTER_ARN '${var.msk_cluster_arn}';
+#       -- Create external schema for MSK streaming ingestion
+#       CREATE EXTERNAL SCHEMA msk_streaming
+#       FROM MSK
+#       IAM_ROLE '${var.msk_access_role_arn}'
+#       AUTHENTICATION iam
+#       CLUSTER_ARN '${var.msk_cluster_arn}';
       
-      -- Create staging tables for CDC data
-      CREATE TABLE staging.customers_raw (
-        kafka_partition INTEGER,
-        kafka_offset BIGINT,
-        kafka_timestamp TIMESTAMP,
-        kafka_key VARCHAR(256),
-        kafka_value SUPER,
-        kafka_headers SUPER
-      );
+#       -- Create staging tables for CDC data
+#       CREATE TABLE staging.customers_raw (
+#         kafka_partition INTEGER,
+#         kafka_offset BIGINT,
+#         kafka_timestamp TIMESTAMP,
+#         kafka_key VARCHAR(256),
+#         kafka_value SUPER,
+#         kafka_headers SUPER
+#       );
       
-      CREATE TABLE staging.products_raw (
-        kafka_partition INTEGER,
-        kafka_offset BIGINT,
-        kafka_timestamp TIMESTAMP,
-        kafka_key VARCHAR(256),
-        kafka_value SUPER,
-        kafka_headers SUPER
-      );
+#       CREATE TABLE staging.products_raw (
+#         kafka_partition INTEGER,
+#         kafka_offset BIGINT,
+#         kafka_timestamp TIMESTAMP,
+#         kafka_key VARCHAR(256),
+#         kafka_value SUPER,
+#         kafka_headers SUPER
+#       );
       
-      CREATE TABLE staging.orders_raw (
-        kafka_partition INTEGER,
-        kafka_offset BIGINT,
-        kafka_timestamp TIMESTAMP,
-        kafka_key VARCHAR(256),
-        kafka_value SUPER,
-        kafka_headers SUPER
-      );
+#       CREATE TABLE staging.orders_raw (
+#         kafka_partition INTEGER,
+#         kafka_offset BIGINT,
+#         kafka_timestamp TIMESTAMP,
+#         kafka_key VARCHAR(256),
+#         kafka_value SUPER,
+#         kafka_headers SUPER
+#       );
       
-      -- Create materialized views for streaming ingestion
-      CREATE MATERIALIZED VIEW staging.customers_stream AS
-      SELECT 
-        kafka_partition,
-        kafka_offset,
-        kafka_timestamp,
-        JSON_PARSE(kafka_value) as change_data
-      FROM msk_streaming."oracle.inventory.customers.masked"
-      AUTO REFRESH YES;
+#       -- Create materialized views for streaming ingestion
+#       CREATE MATERIALIZED VIEW staging.customers_stream AS
+#       SELECT 
+#         kafka_partition,
+#         kafka_offset,
+#         kafka_timestamp,
+#         JSON_PARSE(kafka_value) as change_data
+#       FROM msk_streaming."oracle.inventory.customers.masked"
+#       AUTO REFRESH YES;
       
-      CREATE MATERIALIZED VIEW staging.products_stream AS
-      SELECT 
-        kafka_partition,
-        kafka_offset,
-        kafka_timestamp,
-        JSON_PARSE(kafka_value) as change_data
-      FROM msk_streaming."oracle.inventory.products.masked"
-      AUTO REFRESH YES;
+#       CREATE MATERIALIZED VIEW staging.products_stream AS
+#       SELECT 
+#         kafka_partition,
+#         kafka_offset,
+#         kafka_timestamp,
+#         JSON_PARSE(kafka_value) as change_data
+#       FROM msk_streaming."oracle.inventory.products.masked"
+#       AUTO REFRESH YES;
       
-      CREATE MATERIALIZED VIEW staging.orders_stream AS
-      SELECT 
-        kafka_partition,
-        kafka_offset,
-        kafka_timestamp,
-        JSON_PARSE(kafka_value) as change_data
-      FROM msk_streaming."oracle.inventory.orders.masked"
-      AUTO REFRESH YES;
+#       CREATE MATERIALIZED VIEW staging.orders_stream AS
+#       SELECT 
+#         kafka_partition,
+#         kafka_offset,
+#         kafka_timestamp,
+#         JSON_PARSE(kafka_value) as change_data
+#       FROM msk_streaming."oracle.inventory.orders.masked"
+#       AUTO REFRESH YES;
       
-      -- Create final dimension and fact tables
-      CREATE TABLE marts.dim_customers (
-        customer_id INTEGER PRIMARY KEY,
-        first_name VARCHAR(100),
-        last_name VARCHAR(100),
-        email VARCHAR(200),
-        phone VARCHAR(20),
-        ssn_token VARCHAR(100),
-        valid_from TIMESTAMP,
-        valid_to TIMESTAMP,
-        is_current BOOLEAN
-      )
-      DISTSTYLE KEY
-      DISTKEY (customer_id)
-      SORTKEY (customer_id, valid_from);
+#       -- Create final dimension and fact tables
+#       CREATE TABLE marts.dim_customers (
+#         customer_id INTEGER PRIMARY KEY,
+#         first_name VARCHAR(100),
+#         last_name VARCHAR(100),
+#         email VARCHAR(200),
+#         phone VARCHAR(20),
+#         ssn_token VARCHAR(100),
+#         valid_from TIMESTAMP,
+#         valid_to TIMESTAMP,
+#         is_current BOOLEAN
+#       )
+#       DISTSTYLE KEY
+#       DISTKEY (customer_id)
+#       SORTKEY (customer_id, valid_from);
       
-      CREATE TABLE marts.dim_products (
-        product_id INTEGER PRIMARY KEY,
-        product_name VARCHAR(200),
-        category VARCHAR(100),
-        price DECIMAL(10,2),
-        stock_quantity INTEGER,
-        valid_from TIMESTAMP,
-        valid_to TIMESTAMP,
-        is_current BOOLEAN
-      )
-      DISTSTYLE ALL;
+#       CREATE TABLE marts.dim_products (
+#         product_id INTEGER PRIMARY KEY,
+#         product_name VARCHAR(200),
+#         category VARCHAR(100),
+#         price DECIMAL(10,2),
+#         stock_quantity INTEGER,
+#         valid_from TIMESTAMP,
+#         valid_to TIMESTAMP,
+#         is_current BOOLEAN
+#       )
+#       DISTSTYLE ALL;
       
-      CREATE TABLE marts.fact_orders (
-        order_id INTEGER PRIMARY KEY,
-        customer_id INTEGER,
-        order_date TIMESTAMP,
-        total_amount DECIMAL(10,2),
-        status VARCHAR(50),
-        created_at TIMESTAMP,
-        updated_at TIMESTAMP
-      )
-      DISTSTYLE KEY
-      DISTKEY (customer_id)
-      SORTKEY (order_date);
+#       CREATE TABLE marts.fact_orders (
+#         order_id INTEGER PRIMARY KEY,
+#         customer_id INTEGER,
+#         order_date TIMESTAMP,
+#         total_amount DECIMAL(10,2),
+#         status VARCHAR(50),
+#         created_at TIMESTAMP,
+#         updated_at TIMESTAMP
+#       )
+#       DISTSTYLE KEY
+#       DISTKEY (customer_id)
+#       SORTKEY (order_date);
       
-      -- Create stored procedures for CDC merge
-      CREATE OR REPLACE PROCEDURE staging.merge_customers()
-      AS $$
-      BEGIN
-        -- Update existing records (set valid_to and is_current = false)
-        UPDATE marts.dim_customers
-        SET valid_to = CURRENT_TIMESTAMP,
-            is_current = FALSE
-        FROM (
-          SELECT DISTINCT 
-            change_data.after.customer_id::INT as customer_id
-          FROM staging.customers_stream
-          WHERE change_data.op IN ('u', 'd')
-        ) updates
-        WHERE marts.dim_customers.customer_id = updates.customer_id
-          AND marts.dim_customers.is_current = TRUE;
+#       -- Create stored procedures for CDC merge
+#       CREATE OR REPLACE PROCEDURE staging.merge_customers()
+#       AS $$
+#       BEGIN
+#         -- Update existing records (set valid_to and is_current = false)
+#         UPDATE marts.dim_customers
+#         SET valid_to = CURRENT_TIMESTAMP,
+#             is_current = FALSE
+#         FROM (
+#           SELECT DISTINCT 
+#             change_data.after.customer_id::INT as customer_id
+#           FROM staging.customers_stream
+#           WHERE change_data.op IN ('u', 'd')
+#         ) updates
+#         WHERE marts.dim_customers.customer_id = updates.customer_id
+#           AND marts.dim_customers.is_current = TRUE;
         
-        -- Insert new records
-        INSERT INTO marts.dim_customers
-        SELECT 
-          change_data.after.customer_id::INT,
-          change_data.after.first_name::VARCHAR,
-          change_data.after.last_name::VARCHAR,
-          change_data.after.email::VARCHAR,
-          change_data.after.phone::VARCHAR,
-          change_data.after.ssn::VARCHAR,
-          kafka_timestamp,
-          NULL,
-          TRUE
-        FROM staging.customers_stream
-        WHERE change_data.op IN ('c', 'u', 'r');
-      END;
-      $$ LANGUAGE plpgsql;
+#         -- Insert new records
+#         INSERT INTO marts.dim_customers
+#         SELECT 
+#           change_data.after.customer_id::INT,
+#           change_data.after.first_name::VARCHAR,
+#           change_data.after.last_name::VARCHAR,
+#           change_data.after.email::VARCHAR,
+#           change_data.after.phone::VARCHAR,
+#           change_data.after.ssn::VARCHAR,
+#           kafka_timestamp,
+#           NULL,
+#           TRUE
+#         FROM staging.customers_stream
+#         WHERE change_data.op IN ('c', 'u', 'r');
+#       END;
+#       $$ LANGUAGE plpgsql;
       
-      -- Grant permissions
-      GRANT USAGE ON SCHEMA staging TO GROUP analysts;
-      GRANT USAGE ON SCHEMA marts TO GROUP analysts;
-      GRANT SELECT ON ALL TABLES IN SCHEMA marts TO GROUP analysts;
-SQL
+#       -- Grant permissions
+#       GRANT USAGE ON SCHEMA staging TO GROUP analysts;
+#       GRANT USAGE ON SCHEMA marts TO GROUP analysts;
+#       GRANT SELECT ON ALL TABLES IN SCHEMA marts TO GROUP analysts;
+# SQL
 
-      echo "Redshift setup complete"
-    EOF
-  }
-}
+#       echo "Redshift setup complete"
+#     EOF
+#   }
+# }
 
 # Data source for current AWS account
 data "aws_caller_identity" "current" {}

@@ -16,19 +16,20 @@ tags = {
 
 # VPC Configuration
 vpc_cidr = "10.0.0.0/16"
-azs      = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
+# azs      = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
+azs = ["ap-southeast-1a"]
 
 # EKS Configuration
 eks_cluster_version = "1.29"
 eks_node_groups = {
   debezium = {
-    min_size       = 2
-    max_size       = 5
-    desired_size   = 3
+    min_size       = 1
+    max_size       = 2
+    desired_size   = 1
     # instance_types = ["m5.xlarge"]
-    instance_types = ["t3.small"]
+    instance_types = ["t3.medium"]
     labels = {
-      role = "debezium-worker"
+      role = "demo"
     }
     taints = []
   }
@@ -46,5 +47,5 @@ rds_instance_class = "db.t3.small"
 rds_engine_version = "19.0.0.0.ru-2023-10.rur-2023-10.r1"
 
 # Redshift Configuration
-redshift_node_type  = "dc2.large"
-redshift_node_count = 2
+redshift_node_type  = "ra3.large"
+redshift_node_count = 1

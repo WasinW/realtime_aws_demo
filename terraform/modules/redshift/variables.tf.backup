@@ -1,3 +1,4 @@
+# terraform/modules/redshift/variables.tf
 variable "name_prefix" {
   description = "Prefix for resource names"
   type        = string
@@ -21,26 +22,23 @@ variable "subnet_ids" {
 variable "node_type" {
   description = "Redshift node type"
   type        = string
-  default     = "ra3.large"
+  default     = "dc2.large"
 }
 
 variable "node_count" {
   description = "Number of nodes in the cluster"
   type        = number
-  default     = 1
+  default     = 2
 }
 
-# Make MSK optional
 variable "msk_cluster_arn" {
   description = "ARN of the MSK cluster"
   type        = string
-  default     = ""
 }
 
 variable "msk_access_role_arn" {
   description = "ARN of the IAM role for MSK access"
   type        = string
-  default     = ""
 }
 
 variable "tags" {
