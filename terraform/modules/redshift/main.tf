@@ -152,13 +152,19 @@ resource "aws_redshift_cluster" "main" {
   cluster_parameter_group_name = aws_redshift_parameter_group.main.name
   
   vpc_security_group_ids = [aws_security_group.redshift.id]
-  iam_roles              = [aws_iam_role.redshift.arn, var.msk_access_role_arn]
+  # iam_roles              = [aws_iam_role.redshift.arn, var.msk_access_role_arn]
+  iam_roles = compact([
+    aws_iam_role.redshift.arn,
+    var.msk_access_role_arn != "" ? var.msk_access_role_arn : null
+  ])
+
   
   encrypted                    = true
   enhanced_vpc_routing         = true
   publicly_accessible          = false
   automated_snapshot_retention_period = 7
   
+  skip_final_snapshot = true  # สำหรับ demo
   # logging {
   #   enable        = true
   #   bucket_name   = aws_s3_bucket.redshift_logs.id

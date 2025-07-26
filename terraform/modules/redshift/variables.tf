@@ -43,6 +43,12 @@ variable "msk_access_role_arn" {
   default     = ""
 }
 
+variable "multi_az" {
+  description = "Deploy Redshift in multiple AZs"
+  type        = bool
+  default     = false
+}
+
 variable "tags" {
   description = "Tags to apply to resources"
   type        = map(string)

@@ -1,4 +1,4 @@
-# terraform/environments/demo/variables.tf
+# terraform/environments/demo/variables.tf - Improved version for demo
 
 variable "project_name" {
   description = "Name of the project"
@@ -22,34 +22,67 @@ variable "tags" {
   description = "Default tags for all resources"
   type        = map(string)
   default = {
-    Project     = "demo_rt_the_one"
+    Project     = "oracle-cdc-pipeline"
     Environment = "demo"
     ManagedBy   = "terraform"
-    CostCenter  = "demo_rt_the_one"
+    CostCenter  = "demo"
   }
 }
 
+# Deployment Options
+variable "force_recreate" {
+  description = "Force recreate all resources with new names"
+  type        = bool
+  default     = false
+}
+
+variable "single_az" {
+  description = "Deploy in single AZ for cost savings (demo only)"
+  type        = bool
+  default     = true
+}
+
+# Feature Flags
+variable "enable_eks" {
+  description = "Enable EKS cluster deployment"
+  type        = bool
+  default     = true
+}
+
+variable "enable_rds" {
+  description = "Enable RDS Oracle deployment"
+  type        = bool
+  default     = true
+}
+
+variable "enable_redshift" {
+  description = "Enable Redshift deployment"
+  type        = bool
+  default     = true
+}
+
+variable "enable_msk" {
+  description = "Enable MSK deployment (false = use Kafka in K8s)"
+  type        = bool
+  default     = false
+}
+
+# VPC Configuration
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
   type        = string
   default     = "10.0.0.0/16"
 }
 
-variable "azs" {
-  description = "Availability zones"
-  type        = list(string)
-  default     = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
-}
-
 # EKS Configuration
 variable "eks_cluster_version" {
-  description = "Kubernetes version to use for the EKS cluster"
+  description = "Kubernetes version"
   type        = string
   default     = "1.29"
 }
 
 variable "eks_node_groups" {
-  description = "Map of node group configurations"
+  description = "EKS node group configurations"
   type = map(object({
     min_size       = number
     max_size       = number
@@ -63,43 +96,24 @@ variable "eks_node_groups" {
     }))
   }))
   default = {
-    debezium = {
-      min_size       = 2
-      max_size       = 5
-      desired_size   = 3
-      instance_types = ["m5.xlarge"]
+    demo = {
+      min_size       = 1
+      max_size       = 3
+      desired_size   = 1
+      instance_types = ["t3.medium"]
       labels = {
-        role = "debezium-worker"
+        role = "demo"
       }
       taints = []
     }
   }
 }
 
-# MSK Configuration
-variable "msk_instance_type" {
-  description = "Instance type for MSK brokers"
-  type        = string
-  default     = "kafka.m5.large"
-}
-
-variable "msk_kafka_version" {
-  description = "Kafka version for MSK"
-  type        = string
-  default     = "3.5.1"
-}
-
-variable "msk_broker_count" {
-  description = "Number of broker nodes in MSK cluster"
-  type        = number
-  default     = 3
-}
-
 # RDS Configuration
 variable "rds_instance_class" {
   description = "RDS instance class"
   type        = string
-  default     = "db.m5.xlarge"
+  default     = "db.t3.small"
 }
 
 variable "rds_engine_version" {
@@ -116,7 +130,7 @@ variable "redshift_node_type" {
 }
 
 variable "redshift_node_count" {
-  description = "Number of nodes in Redshift cluster"
+  description = "Number of Redshift nodes"
   type        = number
-  default     = 2
+  default     = 1
 }
