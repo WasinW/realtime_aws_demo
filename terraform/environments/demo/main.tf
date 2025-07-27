@@ -81,7 +81,6 @@ module "vpc" {
   private_subnet_cidrs = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 4, i)]
   public_subnet_cidrs  = [for i, az in local.azs : cidrsubnet(var.vpc_cidr, 4, i + 8)]
   enable_nat_gateway   = true
-  single_nat_gateway   = var.single_az
   region              = var.region
   tags                = var.tags
 }
@@ -147,7 +146,6 @@ module "rds" {
   subnet_ids     = local.vpc_exists && !var.force_recreate ? data.aws_subnets.existing_private[0].ids : module.vpc[0].private_subnet_ids
   engine_version = var.rds_engine_version
   instance_class = var.rds_instance_class
-  multi_az       = !var.single_az
   tags          = var.tags
 }
 

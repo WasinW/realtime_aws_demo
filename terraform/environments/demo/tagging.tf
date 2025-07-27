@@ -1,5 +1,29 @@
 # terraform/environments/demo/tagging.tf - Centralized tagging configuration
 
+variable "create_tag_policy" {
+  description = "Whether to create the AWS Organizations tag policy."
+  type        = bool
+  default     = false
+}
+
+variable "azs" {
+  description = "List of availability zones to use."
+  type        = list(string)
+  default     = []
+}
+
+variable "private_subnet_cidrs" {
+  description = "List of CIDR blocks for private subnets."
+  type        = list(string)
+  default     = []
+}
+
+variable "public_subnet_cidrs" {
+  description = "List of CIDR blocks for public subnets."
+  type        = list(string)
+  default     = []
+}
+
 # ========== TAGGING STRATEGY ==========
 # 1. Provider default_tags - Applied to ALL resources automatically
 # 2. Module tags - Passed to each module
@@ -28,7 +52,6 @@ locals {
   common_tags = merge(
     local.mandatory_tags,
     local.tracking_tags,
-    var.additional_tags
   )
 }
 
@@ -93,12 +116,17 @@ resource "aws_organizations_policy" "tagging_policy" {
 module "networking" {
   source = "../../modules/networking"
   
-  name_prefix = local.name_prefix
-  vpc_cidr    = var.vpc_cidr
+  name_prefix           = local.name_prefix
+  vpc_cidr              = var.vpc_cidr
+  region                = var.region
+  azs                   = var.azs
+  private_subnet_cidrs  = var.private_subnet_cidrs
+  public_subnet_cidrs   = var.public_subnet_cidrs
   
   # Pass all common tags to module
   tags = local.common_tags
 }
+
 
 # ========== RESOURCE EXAMPLE WITH TAGS ==========
 resource "aws_s3_bucket" "data" {
