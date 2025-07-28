@@ -158,19 +158,30 @@ resource "aws_db_instance" "oracle" {
   option_group_name    = aws_db_option_group.oracle.name
 
   # Backup
-  backup_retention_period = 7
+  # backup_retention_period = 7
   backup_window          = "03:00-04:00"
   maintenance_window     = "sun:04:00-sun:05:00"
 
   # Monitoring
-  enabled_cloudwatch_logs_exports = ["alert", "audit", "trace", "listener"]
-  performance_insights_enabled    = true
+  # enabled_cloudwatch_logs_exports = ["alert", "audit", "trace", "listener"]
+  # performance_insights_enabled    = true
   performance_insights_retention_period = 7
 
   # Other
-  deletion_protection = false
-  skip_final_snapshot = true
+  # deletion_protection = false
+  # skip_final_snapshot = true
   apply_immediately   = true
+
+  # Demo optimizations
+  backup_retention_period = var.backup_retention_period
+  multi_az               = var.multi_az
+  deletion_protection    = var.deletion_protection
+  skip_final_snapshot    = true  # For easy cleanup
+  
+  # Reduce monitoring for cost
+  enabled_cloudwatch_logs_exports = []  # No logs export for demo
+  performance_insights_enabled    = false  # Disable for demo
+
 
   tags = var.tags
 }

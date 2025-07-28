@@ -131,11 +131,11 @@ resource "aws_iam_role_policy" "redshift_s3" {
   })
 }
 
-# Attach Redshift Spectrum policy
-resource "aws_iam_role_policy_attachment" "redshift_spectrum" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonRedshiftAllCommandsFullAccess"
-  role       = aws_iam_role.redshift.name
-}
+# # Attach Redshift Spectrum policy
+# resource "aws_iam_role_policy_attachment" "redshift_spectrum" {
+#   policy_arn = "arn:aws:iam::aws:policy/AmazonRedshiftAllCommandsFullAccess"
+#   role       = aws_iam_role.redshift.name
+# }
 
 # Redshift Cluster
 resource "aws_redshift_cluster" "main" {
@@ -160,9 +160,9 @@ resource "aws_redshift_cluster" "main" {
 
   
   encrypted                    = true
-  enhanced_vpc_routing         = true
+  enhanced_vpc_routing         = false
   publicly_accessible          = false
-  automated_snapshot_retention_period = 7
+  automated_snapshot_retention_period = 1
   
   skip_final_snapshot = true  # สำหรับ demo
   # logging {
@@ -170,78 +170,78 @@ resource "aws_redshift_cluster" "main" {
   #   bucket_name   = aws_s3_bucket.redshift_logs.id
   #   s3_key_prefix = "redshift-logs"
   # }
-  
-  tags = var.tags
-}
-
-# เพิ่มหลัง aws_redshift_cluster resource
-resource "aws_redshift_logging" "main" {
-  cluster_identifier = aws_redshift_cluster.main.id
-  log_destination_type = "s3"
-  bucket_name         = aws_s3_bucket.redshift_logs.id
-  s3_key_prefix       = "redshift-logs"
-
-  depends_on = [aws_s3_bucket_policy.redshift_logs]
-
-}
-
-# S3 Bucket for Redshift Logs
-resource "aws_s3_bucket" "redshift_logs" {
-  bucket = "${var.name_prefix}-rs-logs-${data.aws_caller_identity.current.account_id}"
 
   tags = var.tags
 }
 
-# เพิ่มหลัง resource "aws_s3_bucket" "redshift_logs"
-resource "aws_s3_bucket_policy" "redshift_logs" {
-  bucket = aws_s3_bucket.redshift_logs.id
+# # เพิ่มหลัง aws_redshift_cluster resource
+# resource "aws_redshift_logging" "main" {
+#   cluster_identifier = aws_redshift_cluster.main.id
+#   log_destination_type = "s3"
+#   bucket_name         = aws_s3_bucket.redshift_logs.id
+#   s3_key_prefix       = "redshift-logs"
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "AllowRedshiftLogs"
-        Effect = "Allow"
-        Principal = {
-          Service = "redshift.amazonaws.com"
-        }
-        Action = [
-          "s3:PutObject",
-          "s3:GetBucketAcl"
-        ]
-        Resource = [
-          aws_s3_bucket.redshift_logs.arn,
-          "${aws_s3_bucket.redshift_logs.arn}/*"
-        ]
-      }
-    ]
-  })
-}
+#   depends_on = [aws_s3_bucket_policy.redshift_logs]
 
-resource "aws_s3_bucket_lifecycle_configuration" "redshift_logs" {
-  bucket = aws_s3_bucket.redshift_logs.id
+# }
 
-  rule {
-    id     = "expire-old-logs"
-    status = "Enabled"
+# # S3 Bucket for Redshift Logs
+# resource "aws_s3_bucket" "redshift_logs" {
+#   bucket = "${var.name_prefix}-rs-logs-${data.aws_caller_identity.current.account_id}"
 
-    filter {} # Apply to all objects
+#   tags = var.tags
+# }
+
+# # เพิ่มหลัง resource "aws_s3_bucket" "redshift_logs"
+# resource "aws_s3_bucket_policy" "redshift_logs" {
+#   bucket = aws_s3_bucket.redshift_logs.id
+
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Sid    = "AllowRedshiftLogs"
+#         Effect = "Allow"
+#         Principal = {
+#           Service = "redshift.amazonaws.com"
+#         }
+#         Action = [
+#           "s3:PutObject",
+#           "s3:GetBucketAcl"
+#         ]
+#         Resource = [
+#           aws_s3_bucket.redshift_logs.arn,
+#           "${aws_s3_bucket.redshift_logs.arn}/*"
+#         ]
+#       }
+#     ]
+#   })
+# }
+
+# resource "aws_s3_bucket_lifecycle_configuration" "redshift_logs" {
+#   bucket = aws_s3_bucket.redshift_logs.id
+
+#   rule {
+#     id     = "expire-old-logs"
+#     status = "Enabled"
+
+#     filter {} # Apply to all objects
     
-    expiration {
-      days = 30
-    }
-  }
-}
+#     expiration {
+#       days = 30
+#     }
+#   }
+# }
 
-resource "aws_s3_bucket_server_side_encryption_configuration" "redshift_logs" {
-  bucket = aws_s3_bucket.redshift_logs.id
+# resource "aws_s3_bucket_server_side_encryption_configuration" "redshift_logs" {
+#   bucket = aws_s3_bucket.redshift_logs.id
 
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
+#   rule {
+#     apply_server_side_encryption_by_default {
+#       sse_algorithm = "AES256"
+#     }
+#   }
+# }
 
 # Create initial schema and tables
 # resource "null_resource" "setup_redshift" {

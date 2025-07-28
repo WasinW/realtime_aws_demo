@@ -48,3 +48,20 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+variable "backup_retention_period" {
+  description = "Backup retention period in days"
+  type        = number
+  default     = 1  # Minimal for demo
+}
+
+variable "multi_az" {
+  description = "Enable Multi-AZ"
+  type        = bool
+  default     = false  # Single AZ for demo
+}
+
+variable "deletion_protection" {
+  description = "Enable deletion protection"
+  type        = bool
+  default     = false  # Easy cleanup for demo
+}

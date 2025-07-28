@@ -93,19 +93,32 @@ resource "aws_eip" "nat" {
 }
 
 # NAT Gateway(s)
-resource "aws_nat_gateway" "main" {
-  count         = var.enable_nat_gateway ? (var.single_nat_gateway ? 1 : length(var.azs)) : 0
-  allocation_id = aws_eip.nat[count.index].id
-  subnet_id     = aws_subnet.public[count.index].id
+# resource "aws_nat_gateway" "main" {
+#   count         = var.enable_nat_gateway ? (var.single_nat_gateway ? 1 : length(var.azs)) : 0
+#   allocation_id = aws_eip.nat[count.index].id
+#   subnet_id     = aws_subnet.public[count.index].id
 
+#   tags = merge(
+#     var.tags,
+#     {
+#       Name = "${var.name_prefix}-nat-${count.index}"
+#     }
+#   )
+
+#   depends_on = [aws_internet_gateway.main]
+# }
+resource "aws_nat_gateway" "main" {
+  count = var.enable_nat_gateway ? (var.single_nat_gateway ? 1 : length(var.azs)) : 0
+  
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[var.single_nat_gateway ? 0 : count.index].id
+  
   tags = merge(
     var.tags,
     {
       Name = "${var.name_prefix}-nat-${count.index}"
     }
   )
-
-  depends_on = [aws_internet_gateway.main]
 }
 
 # Route Tables - Public
@@ -146,9 +159,7 @@ resource "aws_route" "private_nat" {
   
   route_table_id         = aws_route_table.private[count.index].id
   destination_cidr_block = "0.0.0.0/0"
-  
-  # If single NAT gateway, all private routes point to it
-  nat_gateway_id = var.single_nat_gateway ? aws_nat_gateway.main[0].id : aws_nat_gateway.main[count.index].id
+  nat_gateway_id         = var.single_nat_gateway ? aws_nat_gateway.main[0].id : aws_nat_gateway.main[count.index].id
 }
 
 # Route Table Associations

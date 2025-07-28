@@ -41,3 +41,20 @@ variable "tags" {
   default     = {}
 }
 
+variable "single_nat_gateway" {
+  description = "Use single NAT Gateway for all AZs (cost saving)"
+  type        = bool
+  default     = false
+}
+
+variable "create_vpc_endpoints" {
+  description = "Create VPC endpoints for S3 and ECR"
+  type        = bool
+  default     = false  # ไม่ต้องการสำหรับ demo
+}
+
+variable "create_vpc" {
+  description = "Whether to create VPC. If false, will use existing VPC"
+  type        = bool
+  default     = true
+}

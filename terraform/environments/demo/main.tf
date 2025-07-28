@@ -85,7 +85,7 @@ provider "aws" {
 # }
 # VPC Module
 module "vpc" {
-  source = "../../modules/networking"  # เปลี่ยนเป็น networking
+  source = "../../modules/networking"
   
   name_prefix = local.name_prefix
   vpc_cidr    = local.vpc_cidr
@@ -99,6 +99,7 @@ module "vpc" {
   
   # Single NAT Gateway for cost saving
   enable_nat_gateway = true
+  single_nat_gateway = true  # เพิ่มบรรทัดนี้
   
   region = var.region
   tags   = var.tags
