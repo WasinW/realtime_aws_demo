@@ -1,0 +1,73 @@
+# scripts/init/03-create-topics.yaml
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: oracle.cdc.customers
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: demo-kafka-cluster
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000  # 7 days
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: oracle.cdc.products
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: demo-kafka-cluster
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: oracle.cdc.orders
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: demo-kafka-cluster
+spec:
+  partitions: 3
+  replicas: 1
+  config:
+    retention.ms: 604800000
+---
+# Topics for masked data
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: oracle.cdc.customers.masked
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: demo-kafka-cluster
+spec:
+  partitions: 3
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: oracle.cdc.products.masked
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: demo-kafka-cluster
+spec:
+  partitions: 3
+  replicas: 1
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaTopic
+metadata:
+  name: oracle.cdc.orders.masked
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: demo-kafka-cluster
+spec:
+  partitions: 3
+  replicas: 1

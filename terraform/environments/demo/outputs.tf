@@ -25,3 +25,12 @@ output "kubectl_config_command" {
 output "s3_bucket" {
   value = aws_s3_bucket.data.id
 }
+
+# เพิ่ม outputs ที่หาย
+output "rds_master_password_secret_arn" {
+  value = module.rds.master_password_secret_arn
+}
+
+output "redshift_master_password_secret_arn" {
+  value = module.redshift.master_password_secret_arn
+}
