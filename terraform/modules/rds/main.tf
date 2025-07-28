@@ -106,15 +106,13 @@ resource "aws_kms_alias" "rds" {
 resource "random_password" "master" {
   length  = 20
   special = true
+  override_special = "!#$%*()-_=+[]{}<>:?"  # ไม่มี & และ @
 }
 
 # Store password in Secrets Manager
 resource "aws_secretsmanager_secret" "rds_master" {
-  name = "${var.name_prefix}-rds-oracle-master-password"
-  # name = "${var.name_prefix}-rds-oracle-master-pwd-${formatdate("YYYYMMDD", timestamp())}"
-  # name_prefix = "${var.name_prefix}-rds-oracle-master-"
-
-
+  name_prefix = "${var.name_prefix}-rds-oracle-master-"  # ใช้ name_prefix
+  recovery_window_in_days = 0  # ลบได้ทันที
   tags = var.tags
 }
 

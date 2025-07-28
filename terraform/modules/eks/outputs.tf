@@ -24,7 +24,7 @@ output "oidc_provider_arn" {
   value       = aws_iam_openid_connect_provider.eks.arn
 }
 
-output "pod_security_group_id" {
-  description = "Security group ID for pods"
-  value       = aws_security_group.pod_sg.id
-}
+# output "pod_security_group_id" {
+#   description = "Security group ID for pods"
+#   value       = aws_security_group.pod_sg.id
+# }

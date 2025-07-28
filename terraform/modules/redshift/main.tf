@@ -73,10 +73,9 @@ resource "random_password" "redshift_master" {
 
 # Store password in Secrets Manager
 resource "aws_secretsmanager_secret" "redshift_master" {
-  name = "${var.name_prefix}-redshift-master-password"
-  # name = "${var.name_prefix}-redshift-master-pwd-${formatdate("YYYYMMDD", timestamp())}"
-  # name_prefix = "${var.name_prefix}-redshift-master-"
-
+  name_prefix = "${var.name_prefix}-redshift-master-"  # ใช้ name_prefix
+  recovery_window_in_days = 0  # ลบได้ทันที
+  
   tags = var.tags
 }
 
@@ -173,7 +172,6 @@ resource "aws_redshift_cluster" "main" {
 
   tags = var.tags
 }
-
 # # เพิ่มหลัง aws_redshift_cluster resource
 # resource "aws_redshift_logging" "main" {
 #   cluster_identifier = aws_redshift_cluster.main.id

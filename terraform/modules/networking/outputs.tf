@@ -1,12 +1,12 @@
 # terraform/modules/networking/outputs.tf
 output "vpc_id" {
   description = "ID of the VPC"
-  value       = aws_vpc.main.id
+  value       = var.create_vpc ? aws_vpc.main[0].id : data.aws_vpc.existing[0].id
 }
 
 output "vpc_cidr" {
   description = "CIDR block of the VPC"
-  value       = aws_vpc.main.cidr_block
+  value       = var.create_vpc ? aws_vpc.main[0].cidr_block : data.aws_vpc.existing[0].cidr_block
 }
 
 output "public_subnet_ids" {
@@ -26,5 +26,5 @@ output "nat_gateway_ids" {
 
 output "vpc_endpoints_security_group_id" {
   description = "Security group ID for VPC endpoints"
-  value       = aws_security_group.vpc_endpoints.id
+  value       = var.create_vpc_endpoints ? aws_security_group.vpc_endpoints[0].id : ""
 }

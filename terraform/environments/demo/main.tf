@@ -84,27 +84,33 @@ provider "aws" {
 #   tags                = var.tags
 # }
 # VPC Module
+# เปลี่ยนจาก Single AZ เป็น 2 AZs
 module "vpc" {
   source = "../../modules/networking"
   
   name_prefix = local.name_prefix
   vpc_cidr    = local.vpc_cidr
   
-  # Single AZ for demo
-  azs = ["${var.region}a"]
+  # ใช้ 2 AZs สำหรับ demo (minimum requirement)
+  azs = ["${var.region}a", "${var.region}b"]
   
-  # Subnet CIDRs
-  private_subnet_cidrs = [cidrsubnet(local.vpc_cidr, 4, 0)]
-  public_subnet_cidrs  = [cidrsubnet(local.vpc_cidr, 4, 8)]
+  # Subnet CIDRs สำหรับ 2 AZs
+  private_subnet_cidrs = [
+    cidrsubnet(local.vpc_cidr, 4, 0),
+    cidrsubnet(local.vpc_cidr, 4, 1)
+  ]
+  public_subnet_cidrs = [
+    cidrsubnet(local.vpc_cidr, 4, 8),
+    cidrsubnet(local.vpc_cidr, 4, 9)
+  ]
   
-  # Single NAT Gateway for cost saving
+  # ยังคงใช้ Single NAT Gateway เพื่อประหยัด
   enable_nat_gateway = true
-  single_nat_gateway = true  # เพิ่มบรรทัดนี้
+  single_nat_gateway = true
   
   region = var.region
   tags   = var.tags
 }
-
 # Use existing VPC data if available
 data "aws_vpc" "existing" {
   count = local.vpc_exists && !var.force_recreate ? 1 : 0
