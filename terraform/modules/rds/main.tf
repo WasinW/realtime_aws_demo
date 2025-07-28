@@ -163,7 +163,7 @@ resource "aws_db_instance" "oracle" {
   # Monitoring
   # enabled_cloudwatch_logs_exports = ["alert", "audit", "trace", "listener"]
   # performance_insights_enabled    = true
-  performance_insights_retention_period = 7
+  # performance_insights_retention_period = 7
 
   # Other
   # deletion_protection = false
@@ -180,6 +180,8 @@ resource "aws_db_instance" "oracle" {
   enabled_cloudwatch_logs_exports = []  # No logs export for demo
   performance_insights_enabled    = false  # Disable for demo
 
+  # Demo optimizations
+  
 
   tags = var.tags
 }
