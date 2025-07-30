@@ -1,8 +1,0 @@
-# kubernetes/debezium/01-namespace.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: kafka
-  labels:
-    name: kafka
-    project: demo_rt_the_one

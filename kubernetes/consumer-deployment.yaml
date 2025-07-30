@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: consumer-config
+  namespace: cdc-apps
+data:
+  config.yaml: |
+    kafka:
+      topics:
+        - cdc.crm.s_contact
+        - cdc.crm.s_org_ext
+        - cdc.crm.s_opty
+        - cdc.crm.s_order
+        - cdc.crm.s_order_item
+        - cdc.crm.s_activity
+      consumer_group: cdc-s3-consumer
+      max_poll_records: 10000
+    s3:
+      buffer_size: 10000
+      flush_interval: 60
+    app:
+      port: 8080
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: consumer-secrets
+  namespace: cdc-apps
+type: Opaque
+stringData:
+  kafka-brokers: "cdc-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+  s3-bucket: "${S3_BUCKET}"
+  dlq-bucket: "${DLQ_BUCKET}"
+  redshift-endpoint: "${REDSHIFT_ENDPOINT}"
+  redshift-database: "crmanalytics"
+  redshift-username: "admin"
+  redshift-password: "${REDSHIFT_PASSWORD}"
+  redshift-role-arn: "${REDSHIFT_ROLE_ARN}"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cdc-consumer
+  namespace: cdc-apps
+  annotations:
+    eks.amazonaws.com/role-arn: ${CONSUMER_IAM_ROLE}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cdc-consumer
+  namespace: cdc-apps
+  labels:
+    app: cdc-consumer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cdc-consumer
+  template:
+    metadata:
+      labels:
+        app: cdc-consumer
+    spec:
+      serviceAccountName: cdc-consumer
+      containers:
+      - name: consumer
+        image: ${ECR_REPO}/cdc-consumer:latest
+        imagePullPolicy: Always
+        env:
+        - name: KAFKA_BROKERS
+          valueFrom:
+            secretKeyRef:
+              name: consumer-secrets
+              key: kafka-brokers
+        - name: S3_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: consumer-secrets
+              key: s3-bucket
+        - name: DLQ_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: consumer-secrets
+              key: dlq-bucket
+        - name: REDSHIFT_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: consumer-secrets
+              key: redshift-endpoint
+        - name: REDSHIFT_DATABASE
+          valueFrom:
+            secretKeyRef:
+              name: consumer-secrets
+              key: redshift-database
+        - name: REDSHIFT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: consumer-secrets
+              key: redshift-username
+        - name: REDSHIFT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: consumer-secrets
+              key: redshift-password
+        - name: REDSHIFT_ROLE_ARN
+          valueFrom:
+            secretKeyRef:
+              name: consumer-secrets
+              key: redshift-role-arn
+        - name: AWS_REGION
+          value: "ap-southeast-1"
+        ports:
+        - name: metrics
+          containerPort: 8080
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        volumeMounts:
+        - name: config
+          mountPath: /app/config
+      volumes:
+      - name: config
+        configMap:
+          name: consumer-config
