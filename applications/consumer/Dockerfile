@@ -12,14 +12,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY consumer.py .
+COPY health_server.py .
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Add health check endpoint
-COPY health_server.py .
-
 # Run the application
-CMD ["python", "-m", "consumer"]
+CMD ["python", "consumer.py"]

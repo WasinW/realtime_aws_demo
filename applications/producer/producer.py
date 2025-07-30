@@ -15,6 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import cx_Oracle
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
+from health_server import start_health_server
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +47,7 @@ class OracleCDCProducer:
         self.kafka_producer = None
         self.checkpoints = {}  # Table -> SCN mapping
         self.executor = ThreadPoolExecutor(max_workers=len(TABLES_TO_MONITOR))
+        self.health_server = start_health_server()
         
     def connect_oracle(self):
         """Connect to Oracle database"""
@@ -82,6 +84,8 @@ class OracleCDCProducer:
                 linger_ms=100
             )
             logger.info("Kafka producer initialized")
+            # Mark as ready for health check
+            self.health_server.app_ready = True
         except Exception as e:
             logger.error(f"Failed to setup Kafka: {e}")
             raise
@@ -316,6 +320,7 @@ class OracleCDCProducer:
         """Graceful shutdown"""
         logger.info("Shutting down CDC producer...")
         self.running = False
+        self.health_server.app_ready = False
         
         # Close Kafka producer
         if self.kafka_producer:

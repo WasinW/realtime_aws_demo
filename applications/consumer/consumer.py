@@ -18,6 +18,7 @@ from kafka import KafkaConsumer
 from kafka.errors import KafkaError
 import pyarrow as pa
 import pyarrow.parquet as pq
+from health_server import start_health_server
 
 # Configure logging
 logging.basicConfig(
@@ -56,6 +57,7 @@ class CDCConsumer:
         self.buffers = {topic: [] for topic in TOPICS}
         self.last_flush = {topic: datetime.now() for topic in TOPICS}
         self.executor = ThreadPoolExecutor(max_workers=10)
+        self.health_server = start_health_server()
         
         # Configuration
         self.buffer_size = 10000
@@ -76,6 +78,8 @@ class CDCConsumer:
                 heartbeat_interval_ms=10000
             )
             logger.info("Kafka consumer initialized")
+            # Mark as ready for health check
+            self.health_server.app_ready = True
         except Exception as e:
             logger.error(f"Failed to setup Kafka consumer: {e}")
             raise
@@ -345,6 +349,7 @@ class CDCConsumer:
         """Graceful shutdown"""
         logger.info("Shutting down CDC consumer...")
         self.running = False
+        self.health_server.app_ready = False
         
         # Flush all buffers
         for topic in TOPICS:
