@@ -18,7 +18,6 @@ from kafka import KafkaConsumer
 from kafka.errors import KafkaError
 import pyarrow as pa
 import pyarrow.parquet as pq
-from health_server import start_health_server
 
 # Configure logging
 logging.basicConfig(
@@ -28,25 +27,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration from environment
-KAFKA_BROKERS = os.environ.get('KAFKA_BROKERS', '').split(',')
-S3_BUCKET = os.environ.get('S3_BUCKET')
-DLQ_BUCKET = os.environ.get('DLQ_BUCKET')
+KAFKA_BOOTSTRAP = os.environ.get('KAFKA_BOOTSTRAP_SERVERS')
+S3_DATA_BUCKET = os.environ.get('S3_DATA_BUCKET')
+S3_DLQ_BUCKET = os.environ.get('S3_DLQ_BUCKET')
 REDSHIFT_ENDPOINT = os.environ.get('REDSHIFT_ENDPOINT')
-REDSHIFT_DATABASE = os.environ.get('REDSHIFT_DATABASE', 'crmanalytics')
-REDSHIFT_USERNAME = os.environ.get('REDSHIFT_USERNAME')
+REDSHIFT_DATABASE = os.environ.get('REDSHIFT_DATABASE', 'cdcdemo')
+REDSHIFT_USER = os.environ.get('REDSHIFT_USERNAME', 'admin')
 REDSHIFT_PASSWORD = os.environ.get('REDSHIFT_PASSWORD')
-REDSHIFT_ROLE_ARN = os.environ.get('REDSHIFT_ROLE_ARN')
 AWS_REGION = os.environ.get('AWS_REGION', 'ap-southeast-1')
-
-# Topics to consume
-TOPICS = [
-    'cdc.crm.s_contact',
-    'cdc.crm.s_org_ext',
-    'cdc.crm.s_opty',
-    'cdc.crm.s_order',
-    'cdc.crm.s_order_item',
-    'cdc.crm.s_activity'
-]
 
 class CDCConsumer:
     def __init__(self):
@@ -54,32 +42,24 @@ class CDCConsumer:
         self.kafka_consumer = None
         self.s3_client = boto3.client('s3', region_name=AWS_REGION)
         self.redshift_conn = None
-        self.buffers = {topic: [] for topic in TOPICS}
-        self.last_flush = {topic: datetime.now() for topic in TOPICS}
-        self.executor = ThreadPoolExecutor(max_workers=10)
-        self.health_server = start_health_server()
-        
-        # Configuration
-        self.buffer_size = 10000
-        self.flush_interval_seconds = 60
+        self.buffer = []
+        self.buffer_size = 1000
+        self.buffer_timeout = 30  # seconds
+        self.last_flush = time.time()
+        self.executor = ThreadPoolExecutor(max_workers=5)
         
     def setup_kafka(self):
         """Setup Kafka consumer"""
         try:
             self.kafka_consumer = KafkaConsumer(
-                *TOPICS,
-                bootstrap_servers=KAFKA_BROKERS,
+                'cdc.demo_user.s_contact',
+                bootstrap_servers=KAFKA_BOOTSTRAP.split(','),
                 auto_offset_reset='earliest',
                 enable_auto_commit=False,
-                group_id='cdc-s3-consumer-group',
-                value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-                max_poll_records=1000,
-                session_timeout_ms=30000,
-                heartbeat_interval_ms=10000
+                group_id='cdc-consumer-group',
+                value_deserializer=lambda m: json.loads(m.decode('utf-8'))
             )
             logger.info("Kafka consumer initialized")
-            # Mark as ready for health check
-            self.health_server.app_ready = True
         except Exception as e:
             logger.error(f"Failed to setup Kafka consumer: {e}")
             raise
@@ -91,7 +71,7 @@ class CDCConsumer:
                 host=REDSHIFT_ENDPOINT,
                 port=5439,
                 database=REDSHIFT_DATABASE,
-                user=REDSHIFT_USERNAME,
+                user=REDSHIFT_USER,
                 password=REDSHIFT_PASSWORD
             )
             self.redshift_conn.autocommit = True
@@ -101,182 +81,108 @@ class CDCConsumer:
             raise
             
     def process_message(self, message):
-        """Process a single Kafka message"""
+        """Process a single message"""
         try:
-            topic = message.topic
-            value = message.value
+            cdc_event = message.value
             
             # Add Kafka metadata
-            value['kafka_timestamp'] = datetime.fromtimestamp(
+            cdc_event['kafka_timestamp'] = datetime.fromtimestamp(
                 message.timestamp / 1000
             ).isoformat()
-            value['kafka_offset'] = message.offset
-            value['kafka_partition'] = message.partition
+            cdc_event['kafka_offset'] = message.offset
+            cdc_event['kafka_partition'] = message.partition
             
-            # Buffer the message
-            self.buffers[topic].append(value)
+            # Add to buffer
+            self.buffer.append(cdc_event)
             
             # Check if we should flush
-            if (len(self.buffers[topic]) >= self.buffer_size or
-                (datetime.now() - self.last_flush[topic]).seconds >= self.flush_interval_seconds):
-                self.flush_buffer(topic)
+            if len(self.buffer) >= self.buffer_size or \
+               (time.time() - self.last_flush) > self.buffer_timeout:
+                self.flush_buffer()
                 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
-            # Send to DLQ
             self.send_to_dlq(message, str(e))
             
-    def flush_buffer(self, topic):
-        """Flush buffer to S3 and load to Redshift"""
-        if not self.buffers[topic]:
+    def flush_buffer(self):
+        """Flush buffer to S3 and Redshift"""
+        if not self.buffer:
             return
             
         try:
-            # Get table name from topic
-            table_name = topic.split('.')[-1]
+            # Generate S3 key with timestamp
+            timestamp = datetime.now()
+            s3_key = f"cdc/s_contact/year={timestamp.year}/month={timestamp.month:02d}/day={timestamp.day:02d}/{timestamp.strftime('%Y%m%d_%H%M%S')}.parquet"
             
-            # Prepare data
-            records = self.buffers[topic].copy()
-            self.buffers[topic].clear()
-            self.last_flush[topic] = datetime.now()
+            # Convert to Parquet
+            records = []
+            for event in self.buffer:
+                record = {}
+                
+                # Get data from event
+                data = event.get('after', event.get('before', {}))
+                if data:
+                    record.update(data)
+                    
+                # Add CDC metadata
+                record['_cdc_operation'] = event.get('op', 'r')
+                record['_cdc_timestamp'] = event.get('ts_ms', 0)
+                record['_kafka_timestamp'] = event.get('kafka_timestamp')
+                record['_s3_write_timestamp'] = datetime.now().isoformat()
+                
+                records.append(record)
+                
+            # Create Parquet table
+            df = pa.Table.from_pylist(records)
             
-            # Add S3 write timestamp
-            s3_timestamp = datetime.now().isoformat()
-            for record in records:
-                record['s3_write_timestamp'] = s3_timestamp
+            # Write to S3
+            s3_path = f"s3://{S3_DATA_BUCKET}/{s3_key}"
+            pq.write_table(df, s3_path)
             
-            # Convert to Parquet and write to S3
-            s3_path = self.write_to_s3(records, table_name)
+            logger.info(f"Wrote {len(records)} records to {s3_path}")
             
             # Load to Redshift
-            self.load_to_redshift(s3_path, table_name)
+            self.load_to_redshift(s3_path)
             
-            # Commit Kafka offsets
+            # Clear buffer and commit offsets
+            self.buffer.clear()
             self.kafka_consumer.commit()
-            
-            logger.info(f"Flushed {len(records)} records for {table_name}")
+            self.last_flush = time.time()
             
         except Exception as e:
-            logger.error(f"Error flushing buffer for {topic}: {e}")
-            # Put records back in buffer for retry
-            self.buffers[topic].extend(records)
-            raise
+            logger.error(f"Error flushing buffer: {e}")
+            # Don't clear buffer so we can retry
             
-    def write_to_s3(self, records, table_name):
-        """Write records to S3 as Parquet"""
-        # Generate S3 path with date partitioning
-        now = datetime.now()
-        s3_key = (
-            f"cdc/{table_name}/"
-            f"year={now.year}/month={now.month:02d}/day={now.day:02d}/"
-            f"{table_name}_{now.strftime('%Y%m%d_%H%M%S')}_{int(time.time())}.parquet"
-        )
-        
-        # Convert to PyArrow Table
-        # Flatten nested structures
-        flattened_records = []
-        for record in records:
-            flat_record = self.flatten_record(record)
-            flattened_records.append(flat_record)
-        
-        # Create PyArrow table
-        table = pa.Table.from_pylist(flattened_records)
-        
-        # Write to local file first
-        local_path = f"/tmp/{os.path.basename(s3_key)}"
-        pq.write_table(
-            table,
-            local_path,
-            compression='snappy',
-            use_dictionary=True,
-            use_deprecated_int96_timestamps=True
-        )
-        
-        # Upload to S3
-        self.s3_client.upload_file(
-            local_path,
-            S3_BUCKET,
-            s3_key
-        )
-        
-        # Clean up local file
-        os.remove(local_path)
-        
-        logger.info(f"Wrote {len(records)} records to s3://{S3_BUCKET}/{s3_key}")
-        
-        return f"s3://{S3_BUCKET}/{s3_key}"
-        
-    def flatten_record(self, record):
-        """Flatten nested CDC record structure"""
-        flat = {}
-        
-        # CDC metadata
-        flat['cdc_operation'] = record.get('op', '')
-        flat['cdc_timestamp'] = datetime.fromtimestamp(
-            record.get('ts_ms', 0) / 1000
-        ).isoformat()
-        flat['kafka_timestamp'] = record.get('kafka_timestamp')
-        flat['s3_write_timestamp'] = record.get('s3_write_timestamp')
-        
-        # Extract data based on operation
-        data = {}
-        if record.get('op') in ['c', 'u', 'r']:  # create, update, read
-            data = record.get('after', {})
-        elif record.get('op') == 'd':  # delete
-            data = record.get('before', {})
-            
-        # Add all data fields
-        for key, value in data.items():
-            # Convert dates/timestamps
-            if isinstance(value, str) and 'T' in value:
-                try:
-                    # Try to parse as ISO datetime
-                    dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
-                    flat[key.lower()] = dt.isoformat()
-                except:
-                    flat[key.lower()] = value
-            else:
-                flat[key.lower()] = value
-                
-        return flat
-        
-    def load_to_redshift(self, s3_path, table_name):
-        """Load data from S3 to Redshift using COPY command"""
+    def load_to_redshift(self, s3_path):
+        """Load data from S3 to Redshift"""
         cursor = self.redshift_conn.cursor()
         
         try:
-            # COPY to staging table first
-            staging_table = f"crm_cdc.stg_{table_name}"
-            target_table = f"crm_cdc.{table_name}"
+            # Create IAM role for Redshift if not exists
+            iam_role = f"arn:aws:iam::{boto3.client('sts').get_caller_identity()['Account']}:role/oracle-cdc-demo-redshift-role"
             
             # Truncate staging table
-            cursor.execute(f"TRUNCATE TABLE {staging_table}")
+            cursor.execute("TRUNCATE TABLE cdc.s_contact_staging")
             
-            # COPY from S3
-            copy_sql = f"""
-                COPY {staging_table}
+            # COPY from S3 to staging
+            copy_query = f"""
+                COPY cdc.s_contact_staging
                 FROM '{s3_path}'
-                IAM_ROLE '{REDSHIFT_ROLE_ARN}'
+                IAM_ROLE '{iam_role}'
                 FORMAT AS PARQUET
-                TIMEFORMAT 'auto'
+                TIMEFORMAT 'YYYY-MM-DD HH:MI:SS'
                 TRUNCATECOLUMNS
-                BLANKSASNULL
-                EMPTYASNULL
             """
-            cursor.execute(copy_sql)
+            cursor.execute(copy_query)
             
-            # Insert into main table
-            insert_sql = f"""
-                INSERT INTO {target_table}
-                SELECT * FROM {staging_table}
+            # Merge into main table
+            merge_query = """
+                INSERT INTO cdc.s_contact
+                SELECT * FROM cdc.s_contact_staging
             """
-            cursor.execute(insert_sql)
+            cursor.execute(merge_query)
             
-            # Get row count
-            cursor.execute(f"SELECT COUNT(*) FROM {staging_table}")
-            row_count = cursor.fetchone()[0]
-            
-            logger.info(f"Loaded {row_count} rows to Redshift table {target_table}")
+            logger.info("Data loaded to Redshift successfully")
             
         except Exception as e:
             logger.error(f"Error loading to Redshift: {e}")
@@ -284,81 +190,62 @@ class CDCConsumer:
         finally:
             cursor.close()
             
-    def send_to_dlq(self, message, error_reason):
-        """Send failed message to DLQ"""
+    def send_to_dlq(self, message, error):
+        """Send failed messages to DLQ"""
         try:
             dlq_record = {
-                'original_topic': message.topic,
-                'original_offset': message.offset,
-                'original_partition': message.partition,
-                'original_timestamp': message.timestamp,
-                'error_reason': error_reason,
+                'original_message': message.value,
+                'error': error,
                 'error_timestamp': datetime.now().isoformat(),
-                'original_value': message.value
+                'topic': message.topic,
+                'partition': message.partition,
+                'offset': message.offset
             }
             
-            # Write to DLQ S3 bucket
-            now = datetime.now()
-            dlq_key = (
-                f"dlq/{message.topic}/"
-                f"year={now.year}/month={now.month:02d}/day={now.day:02d}/"
-                f"error_{now.strftime('%Y%m%d_%H%M%S')}_{message.offset}.json"
-            )
+            # Write to S3 DLQ bucket
+            timestamp = datetime.now()
+            s3_key = f"dlq/s_contact/{timestamp.strftime('%Y/%m/%d')}/{message.offset}.json"
             
             self.s3_client.put_object(
-                Bucket=DLQ_BUCKET,
-                Key=dlq_key,
+                Bucket=S3_DLQ_BUCKET,
+                Key=s3_key,
                 Body=json.dumps(dlq_record),
                 ContentType='application/json'
             )
             
-            logger.warning(f"Sent message to DLQ: {dlq_key}")
+            logger.warning(f"Sent message to DLQ: {s3_key}")
             
         except Exception as e:
             logger.error(f"Failed to send to DLQ: {e}")
             
     def run(self):
-        """Main consumer loop"""
+        """Main run loop"""
         self.setup_kafka()
         self.connect_redshift()
         
         logger.info("Starting CDC consumer...")
         
         try:
-            while self.running:
-                # Poll for messages
-                messages = self.kafka_consumer.poll(timeout_ms=1000)
+            for message in self.kafka_consumer:
+                if not self.running:
+                    break
+                    
+                self.process_message(message)
                 
-                for topic_partition, records in messages.items():
-                    for record in records:
-                        self.process_message(record)
-                        
-                # Periodic flush check
-                for topic in TOPICS:
-                    if (datetime.now() - self.last_flush[topic]).seconds >= self.flush_interval_seconds:
-                        self.flush_buffer(topic)
-                        
         except KeyboardInterrupt:
             logger.info("Received interrupt signal")
         except Exception as e:
-            logger.error(f"Fatal error in consumer: {e}")
-        finally:
-            self.shutdown()
+            logger.error(f"Error in consumer loop: {e}")
             
     def shutdown(self):
         """Graceful shutdown"""
-        logger.info("Shutting down CDC consumer...")
+        logger.info("Shutting down...")
         self.running = False
-        self.health_server.app_ready = False
         
-        # Flush all buffers
-        for topic in TOPICS:
-            if self.buffers[topic]:
-                try:
-                    self.flush_buffer(topic)
-                except:
-                    pass
-                    
+        # Flush remaining buffer
+        if self.buffer:
+            self.flush_buffer()
+            
         # Close connections
         if self.kafka_consumer:
             self.kafka_consumer.close()
@@ -366,13 +253,11 @@ class CDCConsumer:
         if self.redshift_conn:
             self.redshift_conn.close()
             
-        # Shutdown executor
         self.executor.shutdown(wait=True)
-        
-        logger.info("CDC consumer shutdown complete")
+        logger.info("Shutdown complete")
 
 def main():
-    # Signal handlers
+    # Signal handler
     def signal_handler(sig, frame):
         logger.info(f"Received signal {sig}")
         consumer.shutdown()

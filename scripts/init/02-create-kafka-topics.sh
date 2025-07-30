@@ -1,65 +1,32 @@
 #!/bin/bash
 # Create Kafka topics for CDC
 
-# Configuration
-KAFKA_BOOTSTRAP_SERVERS="$1"
-REPLICATION_FACTOR=3
-PARTITIONS=10
-
-# Check if bootstrap servers provided
-if [ -z "$KAFKA_BOOTSTRAP_SERVERS" ]; then
-    echo "Usage: $0 <kafka-bootstrap-servers>"
-    exit 1
-fi
-
-# Install Kafka client tools if not present
-if ! command -v kafka-topics.sh &> /dev/null; then
-    cd /tmp
-    wget https://downloads.apache.org/kafka/3.5.1/kafka_2.13-3.5.1.tgz
-    tar -xzf kafka_2.13-3.5.1.tgz
-    export PATH=$PATH:/tmp/kafka_2.13-3.5.1/bin
-fi
+KAFKA_BOOTSTRAP="cdc-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
 
 # Function to create topic
 create_topic() {
-    local topic_name=$1
-    local partitions=${2:-$PARTITIONS}
+    local topic=$1
+    local partitions=${2:-10}
     
-    echo "Creating topic: $topic_name with $partitions partitions"
-    
-    kafka-topics.sh \
-        --bootstrap-server $KAFKA_BOOTSTRAP_SERVERS \
+    kubectl exec -n kafka cdc-cluster-kafka-0 -- \
+        /opt/kafka/bin/kafka-topics.sh \
+        --bootstrap-server $KAFKA_BOOTSTRAP \
         --create \
-        --topic $topic_name \
+        --topic $topic \
         --partitions $partitions \
-        --replication-factor $REPLICATION_FACTOR \
+        --replication-factor 3 \
         --config retention.ms=604800000 \
-        --config compression.type=lz4 \
-        --config max.message.bytes=10485760 \
-        --if-not-exists
+        --config compression.type=lz4
 }
 
-# Create CDC topics for each CRM table
-create_topic "cdc.crm.s_contact" 20
-create_topic "cdc.crm.s_org_ext" 20
-create_topic "cdc.crm.s_opty" 20
-create_topic "cdc.crm.s_order" 30
-create_topic "cdc.crm.s_order_item" 30
-create_topic "cdc.crm.s_activity" 20
+# Create main CDC topic
+create_topic "cdc.demo_user.s_contact" 10
 
-# Create DLQ topics
-create_topic "cdc.dlq.s_contact" 5
-create_topic "cdc.dlq.s_org_ext" 5
-create_topic "cdc.dlq.s_opty" 5
-create_topic "cdc.dlq.s_order" 5
-create_topic "cdc.dlq.s_order_item" 5
-create_topic "cdc.dlq.s_activity" 5
+# Create DLQ topic
+create_topic "cdc.dlq.s_contact" 3
 
-# Create a general DLQ topic
-create_topic "cdc.dlq.general" 10
-
-# List all topics
-echo "Listing all topics:"
-kafka-topics.sh \
-    --bootstrap-server $KAFKA_BOOTSTRAP_SERVERS \
+# List topics
+kubectl exec -n kafka cdc-cluster-kafka-0 -- \
+    /opt/kafka/bin/kafka-topics.sh \
+    --bootstrap-server $KAFKA_BOOTSTRAP \
     --list
