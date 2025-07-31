@@ -1,21 +1,21 @@
-terraform {
-  required_version = ">= 1.5.0"
+# terraform {
+#   required_version = ">= 1.5.0"
   
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.23"
-    }
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.11"
-    }
-  }
-}
+#   required_providers {
+#     aws = {
+#       source  = "hashicorp/aws"
+#       version = "~> 5.0"
+#     }
+#     kubernetes = {
+#       source  = "hashicorp/kubernetes"
+#       version = "~> 2.23"
+#     }
+#     helm = {
+#       source  = "hashicorp/helm"
+#       version = "~> 2.11"
+#     }
+#   }
+# }
 
 provider "aws" {
   region = var.aws_region
@@ -202,15 +202,24 @@ resource "aws_db_instance" "oracle" {
 # EKS Cluster for Kafka
 module "eks" {
   source = "terraform-aws-modules/eks/aws"
-  version = "~> 19.0"
+  version = "~> 20.0"  # อัพเดตเป็น version 20
   
   cluster_name    = "${local.name_prefix}-eks"
   cluster_version = var.eks_cluster_version
   
-  vpc_id                         = module.vpc.vpc_id
-  subnet_ids                     = module.vpc.private_subnets
+  # เปลี่ยนจาก vpc_id และ subnet_ids
+  vpc_id     = module.vpc.vpc_id
+  subnet_ids = module.vpc.private_subnets
+  
+  # ใช้ control_plane_subnet_ids แทน
+  control_plane_subnet_ids = module.vpc.private_subnets
+  
   cluster_endpoint_public_access = true
   
+  # Enable cluster creator admin permissions
+#   enable_cluster_creator_admin_permissions = true
+  
+  # Node groups configuration ที่อัพเดตแล้ว
   eks_managed_node_groups = {
     kafka = {
       min_size     = 3
@@ -221,6 +230,7 @@ module "eks" {
       
       iam_role_additional_policies = {
         AmazonEBSCSIDriverPolicy = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+        AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
       }
       
       tags = merge(local.common_tags, {
@@ -228,7 +238,23 @@ module "eks" {
       })
     }
   }
-  
+
+  # Cluster addons
+  cluster_addons = {
+    coredns = {
+      most_recent = true
+    }
+    kube-proxy = {
+      most_recent = true
+    }
+    vpc-cni = {
+      most_recent = true
+    }
+    aws-ebs-csi-driver = {
+      most_recent = true
+    }
+  }
+
   tags = local.common_tags
 }
 

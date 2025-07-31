@@ -1,2 +1,24 @@
 .terraform*
 *.log
+
+# .gitignore
+# Terraform files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+!*.tfvars.example
+
+# SSH keys
+*.pem
+*.pub
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
