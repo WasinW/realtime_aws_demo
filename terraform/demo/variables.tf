@@ -118,3 +118,9 @@ variable "redshift_master_password" {
   sensitive   = true
   default     = "RedshiftDemo123!"
 }
+# เพิ่มตัวแปรนี้ใน variables.tf
+variable "project_name" {
+  description = "Project name"
+  type        = string
+  default     = "oracle-cdc-demo"
+}
